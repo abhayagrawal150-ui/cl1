@@ -1,0 +1,97 @@
+import gymnasium as gym  # For creating the Taxi environment
+import numpy as np  # For numerical operations
+import random  # For random action selection
+import matplotlib.pyplot as plt  # For plotting rewards
+
+# Step 1: Initialize the environment
+env = gym.make("Taxi-v4")  # Create Taxi environment
+
+n_states = env.observation_space.n  # Get number of states
+n_actions = env.action_space.n  # Get number of actions
+
+Q = np.zeros((n_states, n_actions))  # Initialize Q-table with zeros
+
+# Step 2: Set hyperparameters
+alpha = 0.8  # Learning rate
+gamma = 0.95  # Discount factor
+epsilon = 1.0  # Initial exploration rate
+min_epsilon = 0.01  # Minimum exploration rate
+decay = 0.9995  # Epsilon decay rate
+episodes = 20000  # Number of training episodes
+max_steps = 200  # Maximum steps per episode
+
+rewards = []  # Store rewards for each episode
+success_count = 0  # Count successful drop-offs
+
+# Step 3: Train the agent using Q-learning
+for ep in range(episodes):
+    state, info = env.reset()  # Reset environment
+    total_reward = 0
+
+    for step in range(max_steps):
+
+        # Epsilon-greedy action selection
+        if random.random() < epsilon:
+            action = env.action_space.sample()  # Choose random action
+        else:
+            action = int(np.argmax(Q[state]))  # Choose best action
+
+        # Perform action
+        next_state, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated  # Check if episode is finished
+
+        # Update Q-table
+        Q[state, action] += alpha * (
+            reward + gamma * np.max(Q[next_state]) * (not terminated)
+            - Q[state, action]
+        )  # Update Q-value
+
+        state = next_state  # Move to next state
+        total_reward += reward  # Update total reward
+
+        if done:
+            if terminated and reward == 20:
+                success_count += 1  # Count successful drop-off
+            break
+
+    rewards.append(total_reward)  # Store episode reward
+
+    # Reduce exploration
+    epsilon = max(min_epsilon, epsilon * decay)  # Decrease epsilon
+
+# Step 4: Display training results
+print("Training finished!")
+print("Average reward (last 1000 episodes):",
+      round(np.mean(rewards[-1000:]), 2))
+print("Successful drop-offs during training:", success_count)
+
+# Step 5: Plot rewards
+plt.figure(figsize=(10, 5))  # Set figure size
+plt.plot(rewards)  # Plot episode rewards
+plt.title("Taxi Q-Learning: Episode Rewards")  # Set plot title
+plt.xlabel("Episode")  # Set X-axis label
+plt.ylabel("Total Reward")  # Set Y-axis label
+plt.show()  # Display plot
+
+# Step 6: Test the trained agent
+eval_env = gym.make("Taxi-v4", render_mode="ansi")  # Create testing environment
+
+for ep in range(5):
+    state, info = eval_env.reset()  # Reset environment
+    total_reward = 0
+
+    for step in range(max_steps):
+        action = int(np.argmax(Q[state]))  # Choose best action
+
+        state, reward, terminated, truncated, info = eval_env.step(action)
+        total_reward += reward  # Update total reward
+
+        if terminated or truncated:
+            break
+
+    print(eval_env.render())  # Display Taxi environment
+    print(f"Episode {ep + 1}: Steps = {step + 1}, Reward = {total_reward}")
+    print("-" * 40)
+
+env.close()  # Close training environment
+eval_env.close()  # Close testing environment
