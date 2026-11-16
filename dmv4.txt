@@ -1,0 +1,215 @@
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import re
+
+# 1. IMPORT THE DATASET AND CLEAN COLUMN NAMES
+# Load the Bengaluru house dataset and standardize column names
+# by removing spaces, converting to lowercase and replacing special characters
+
+df = pd.read_csv("Bengaluru_House_Data.csv")
+
+df.columns = (
+    df.columns.str.strip()
+    .str.lower()
+    .str.replace(r"[^a-z0-9]+", "_", regex=True)
+    .str.strip("_")
+)
+
+# Display sample records, dataset dimensions and information
+print(df.head())
+print(df.shape)
+print(df.info())
+
+
+# 2. HANDLE MISSING VALUES AND CLEAN THE DATASET
+# Identify missing values and convert area measurements into numeric values
+
+print("Missing values before cleaning:")
+print(df.isnull().sum())
+
+# Convert total_sqft into numeric values
+def convert_sqft(x):
+    x = str(x).strip()
+
+    # Handle ranges such as 2100 - 2850
+    if "-" in x:
+        try:
+            a, b = x.split("-")
+            return (float(a) + float(b)) / 2
+        except:
+            return np.nan
+
+    # Handle common area units
+    try:
+        value = float(x)
+        return value
+    except:
+        match = re.search(r"\d+\.?\d*", x)
+        if not match:
+            return np.nan
+
+        value = float(match.group())
+
+        if "meter" in x.lower():
+            return value * 10.7639
+        elif "yard" in x.lower():
+            return value * 9
+        else:
+            return np.nan
+
+# Apply the conversion function to the total_sqft column
+df["total_sqft"] = df["total_sqft"].apply(convert_sqft)
+
+# Convert numerical columns into appropriate numeric data types
+for col in ["bath", "balcony", "price"]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+# Fill missing numerical values using median imputation
+numeric_cols = df.select_dtypes(include=np.number).columns
+
+for col in numeric_cols:
+    df[col] = df[col].fillna(df[col].median())
+
+# Fill missing categorical values using mode imputation
+categorical_cols = df.select_dtypes(include="object").columns
+
+for col in categorical_cols:
+    if df[col].notna().any():
+        df[col] = df[col].fillna(df[col].mode()[0])
+
+# Display missing values after cleaning
+print("Missing values after cleaning:")
+print(df.isnull().sum())
+
+# Remove duplicate records from the dataset
+df = df.drop_duplicates()
+
+
+# 3. DATA MERGING
+# No additional dataset is provided, so merging is not applicable.
+
+
+# 4. FILTER AND SUBSET THE DATA
+# Extract BHK information, remove unnecessary columns and filter properties
+# based on reasonable area per bedroom and group rare locations
+
+# Extract BHK from size
+df["bhk"] = df["size"].str.extract(r"(\d+)").astype(float)
+
+# Remove the original size column
+df = df.drop(columns=["size"])
+
+# Keep properties with reasonable area per bedroom
+df = df[df["total_sqft"] / df["bhk"] >= 300]
+
+# Group locations with fewer than 10 properties as 'other'
+df["location"] = df["location"].str.strip()
+
+location_counts = df["location"].value_counts()
+
+rare_locations = location_counts[location_counts < 10].index
+
+df["location"] = df["location"].replace(rare_locations, "other")
+
+# Display the dimensions of the filtered dataset
+print("Filtered dataset shape:", df.shape)
+
+
+# 5. ENCODE CATEGORICAL VARIABLES
+# Remove unnecessary columns and convert categorical variables
+# into numerical format using one-hot encoding
+
+# Remove columns not needed for this analysis
+df = df.drop(columns=["society"], errors="ignore")
+
+# One-hot encode categorical columns
+df_encoded = pd.get_dummies(
+    df,
+    columns=["area_type", "availability", "location"],
+    drop_first=True,
+    dtype=int
+)
+
+# Display the encoded dataset
+print("Encoded dataset:")
+print(df_encoded.head())
+
+
+# 6. AGGREGATE SUMMARY STATISTICS
+# Calculate overall price statistics, average prices by location
+# and property type, and price per square foot
+
+# Calculate price per square foot
+df["price_per_sqft"] = df["price"] * 100000 / df["total_sqft"]
+
+print("Overall sales statistics:")
+print(df["price"].describe())
+
+# Calculate average house price for each location
+print("Average price by location:")
+print(
+    df.groupby("location")["price"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+)
+
+# Calculate average house price for each property type
+print("Average price by property type:")
+print(df.groupby("area_type")["price"].mean())
+
+# Calculate average price per square foot for each location
+print("Average price per square foot by location:")
+print(
+    df.groupby("location")["price_per_sqft"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+)
+
+
+# 7. IDENTIFY AND HANDLE OUTLIERS USING THE IQR METHOD
+# Calculate quartiles and IQR to determine outlier boundaries
+# Remove records containing values outside the calculated boundaries
+
+def remove_outliers(data, column):
+    Q1 = data[column].quantile(0.25)
+    Q3 = data[column].quantile(0.75)
+    IQR = Q3 - Q1
+
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+
+    return data[
+        (data[column] >= lower) &
+        (data[column] <= upper)
+    ]
+
+# Display dataset dimensions before and after outlier removal
+print("Shape before outlier removal:", df.shape)
+
+for col in ["total_sqft", "bath", "bhk", "price", "price_per_sqft"]:
+    df = remove_outliers(df, col)
+
+print("Shape after outlier removal:", df.shape)
+
+# Visualize the distribution of house prices and area using box plots
+plt.boxplot(df["price"])
+plt.title("House Price After Outlier Removal")
+plt.show()
+
+plt.boxplot(df["total_sqft"])
+plt.title("Total Square Feet After Outlier Removal")
+plt.show()
+
+
+# 8. EXPORT THE CLEANED AND ENCODED DATASETS
+# Save the processed datasets as CSV files for future analysis or modeling
+
+df.to_csv("Cleaned_RealEstate_Prices.csv", index=False)
+df_encoded.to_csv("Encoded_RealEstate_Prices.csv", index=False)
+
+print("Data wrangling completed successfully.")

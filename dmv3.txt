@@ -1,0 +1,204 @@
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+# 1. IMPORT THE TELECOM CUSTOMER CHURN DATASET
+
+data = pd.read_csv("Telcom_Customer_Churn.csv")
+
+
+# 2. EXPLORE THE DATASET TO UNDERSTAND ITS STRUCTURE AND CONTENT
+
+# Display sample records, dataset dimensions, column names,
+# data types, descriptive statistics and missing values
+
+print(data.head())
+print(data.tail())
+print(data.shape)
+print(data.columns)
+print(data.info())
+print(data.describe())
+print(data.isnull().sum())
+
+
+# 3. HANDLE MISSING VALUES USING APPROPRIATE IMPUTATION METHODS
+
+# Remove extra spaces from column names
+data.columns = data.columns.str.strip()
+
+# Convert TotalCharges into numeric format
+data['TotalCharges'] = pd.to_numeric(
+    data['TotalCharges'], errors='coerce'
+)
+
+# Fill missing TotalCharges for new customers with zero
+data.loc[
+    (data['tenure'] == 0) & (data['TotalCharges'].isna()),
+    'TotalCharges'
+] = 0
+
+# Fill remaining numerical missing values with median
+num_cols = data.select_dtypes(include=np.number).columns
+
+for col in num_cols:
+    data[col] = data[col].fillna(data[col].median())
+
+# Fill categorical missing values with mode
+cat_cols = data.select_dtypes(include='object').columns
+
+for col in cat_cols:
+    data[col] = data[col].fillna(data[col].mode()[0])
+
+
+# 4. REMOVE DUPLICATE RECORDS FROM THE DATASET
+
+# Display the number of records before and after removing duplicates
+
+print("Before removing duplicates:", len(data))
+
+data = data.drop_duplicates()
+
+print("After removing duplicates:", len(data))
+
+
+# 5. HANDLE INCONSISTENT DATA AND STANDARDIZE VALUES
+
+# Remove leading and trailing spaces from categorical columns
+for col in data.select_dtypes(include='object').columns:
+    data[col] = data[col].str.strip()
+
+# Standardize gender values
+data['gender'] = data['gender'].str.title()
+
+# Standardize Yes/No values across categorical columns
+for col in data.select_dtypes(include='object').columns:
+    data[col] = data[col].replace({
+        'yes': 'Yes',
+        'no': 'No'
+    })
+
+
+# 6. CONVERT COLUMNS INTO APPROPRIATE DATA TYPES
+
+# Convert customer and billing-related columns into numeric formats
+
+data['SeniorCitizen'] = data['SeniorCitizen'].astype(int)
+data['tenure'] = data['tenure'].astype(int)
+data['MonthlyCharges'] = data['MonthlyCharges'].astype(float)
+data['TotalCharges'] = data['TotalCharges'].astype(float)
+
+print("\nData Types:")
+print(data.dtypes)
+
+
+# 7. IDENTIFY AND HANDLE OUTLIERS USING THE IQR METHOD
+
+# Calculate Q1, Q3 and IQR to determine lower and upper boundaries
+# Use clipping to cap extreme values within the calculated boundaries
+
+for col in ['MonthlyCharges', 'TotalCharges']:
+    Q1 = data[col].quantile(0.25)
+    Q3 = data[col].quantile(0.75)
+
+    IQR = Q3 - Q1
+
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+
+    data[col] = data[col].clip(lower, upper)
+
+# Display box plots to visualize the distribution of numerical columns
+plt.figure(figsize=(10, 4))
+sns.boxplot(data=data[['MonthlyCharges', 'TotalCharges']])
+plt.title("Outlier Handling")
+plt.show()
+
+
+# 8. FEATURE ENGINEERING - CREATE NEW FEATURES FROM EXISTING DATA
+
+# Create tenure groups to classify customers based on their subscription duration
+data['TenureGroup'] = pd.cut(
+    data['tenure'],
+    bins=[-1, 12, 24, 48, 72],
+    labels=['New', 'Medium', 'Long', 'Very Long']
+)
+
+# Calculate average monthly spending for each customer
+data['AverageMonthlySpend'] = np.where(
+    data['tenure'] > 0,
+    data['TotalCharges'] / data['tenure'],
+    0
+)
+
+
+# 9. ENCODE CATEGORICAL VARIABLES AND NORMALIZE NUMERICAL FEATURES
+
+# Convert Churn values into numerical form (Yes = 1, No = 0)
+data['Churn'] = data['Churn'].map({
+    'Yes': 1,
+    'No': 0
+})
+
+# Save the cleaned and feature-engineered dataset
+data.to_csv(
+    "Cleaned_Telecom_Customer_Churn.csv",
+    index=False
+)
+
+# Separate independent features (X) and target variable (y)
+X = data.drop(['Churn', 'customerID'], axis=1)
+y = data['Churn']
+
+# Convert categorical features into numerical columns using one-hot encoding
+X = pd.get_dummies(X, drop_first=True, dtype=int)
+
+
+# 10. SPLIT THE DATASET INTO TRAINING AND TESTING SETS
+
+# Divide the dataset into 80% training data and 20% testing data
+# Stratify maintains the proportion of churn and non-churn customers
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# Standardize numerical features using StandardScaler
+# Fit the scaler on training data and apply it to both datasets
+
+scale_cols = [
+    'tenure',
+    'MonthlyCharges',
+    'TotalCharges',
+    'AverageMonthlySpend'
+]
+
+scaler = StandardScaler()
+
+X_train[scale_cols] = scaler.fit_transform(
+    X_train[scale_cols]
+)
+
+X_test[scale_cols] = scaler.transform(
+    X_test[scale_cols]
+)
+
+# Display the dimensions of training and testing datasets
+
+print("\nTraining Data:", X_train.shape)
+print("Testing Data:", X_test.shape)
+
+print("Training Target:", y_train.shape)
+print("Testing Target:", y_test.shape)
+
+
+# 11. EXPORT THE CLEANED DATASET FOR FUTURE ANALYSIS OR MODELING
+
+print("\nCleaned dataset exported successfully!")

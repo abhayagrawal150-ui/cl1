@@ -1,0 +1,175 @@
+
+# EXPERIMENT: DATA VISUALIZATION USING MATPLOTLIB
+# ANALYZING AIR QUALITY TRENDS
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+
+# Ignore warning messages during program execution
+warnings.filterwarnings('ignore')
+
+
+# 1. IMPORT THE AIR QUALITY DATASET
+# Load the air quality data from a CSV file
+
+data = pd.read_csv("data.csv", encoding="cp1252")
+
+
+# 2. EXPLORE THE DATASET
+# Display sample records, dataset information and descriptive statistics
+
+print(data.head())
+print(data.tail())
+print(data.info())
+print(data.describe())
+
+# Standardize column names by removing extra spaces and converting to lowercase
+data.columns = data.columns.str.strip().str.lower()
+
+
+# 3. IDENTIFY RELEVANT VARIABLES AND PREPROCESS THE DATA
+# Identify date and pollutant columns, convert them into appropriate data types
+# and handle missing values
+
+# Convert date into datetime format
+data['date'] = pd.to_datetime(data['date'], errors='coerce', dayfirst=True)
+
+# Identify available pollutant columns
+VALUE_COLS = ['so2', 'no2', 'rspm', 'spm', 'pm2_5', 'pm10', 'co']
+VALUE_COLS = [col for col in VALUE_COLS if col in data.columns]
+
+# Convert pollutant columns into numeric format
+for col in VALUE_COLS:
+    data[col] = pd.to_numeric(data[col], errors='coerce')
+
+# Fill missing pollutant values with mean
+for col in VALUE_COLS:
+    data[col] = data[col].fillna(data[col].mean())
+
+# Check missing values after preprocessing
+print("Missing Values:")
+print(data.isnull().sum())
+
+# Identify AQI column, if available
+AQI_COL = next(
+    (col for col in ['aqi', 'air_quality_index'] if col in data.columns),
+    None
+)
+
+# Remove records with missing dates and sort data chronologically
+data = data.dropna(subset=['date'])
+data = data.sort_values('date')
+
+# Calculate average pollutant levels for each date
+daily_data = data.groupby('date')[VALUE_COLS].mean()
+
+
+# 4. CREATE A LINE PLOT TO VISUALIZE THE OVERALL AQI TREND
+# Display changes in Air Quality Index values over time
+
+if AQI_COL:
+    data[AQI_COL] = pd.to_numeric(data[AQI_COL], errors='coerce')
+    aqi_trend = data.groupby('date')[AQI_COL].mean()
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(aqi_trend.index, aqi_trend.values, label='AQI')
+    plt.title("Overall AQI Trend Over Time")
+    plt.xlabel("Date")
+    plt.ylabel("AQI")
+    plt.legend()
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+else:
+    print("AQI column is not available in this dataset.")
+
+
+# 5. CREATE INDIVIDUAL LINE PLOTS FOR POLLUTANT LEVELS
+# Visualize how different pollutant concentrations change over time
+
+for col in VALUE_COLS:
+    plt.figure(figsize=(12, 5))
+    plt.plot(daily_data.index, daily_data[col], label=col.upper())
+    plt.title("Trend of " + col.upper() + " Over Time")
+    plt.xlabel("Date")
+    plt.ylabel("Pollutant Level")
+    plt.legend()
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+# 6. CREATE BAR PLOTS TO COMPARE AQI VALUES ACROSS DIFFERENT DATES
+# If AQI is unavailable, compare average pollutant levels across dates
+
+if AQI_COL:
+    aqi_daily = data.groupby('date')[AQI_COL].mean()
+
+    plt.figure(figsize=(12, 5))
+    plt.bar(aqi_daily.index, aqi_daily.values)
+    plt.title("AQI Comparison Across Dates")
+    plt.xlabel("Date")
+    plt.ylabel("AQI")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+else:
+    # Compare available pollutant levels across dates
+    daily_data.plot(kind='bar', figsize=(14, 6))
+    plt.title("Pollutant Levels Across Dates")
+    plt.xlabel("Date")
+    plt.ylabel("Average Pollutant Level")
+    plt.legend(title="Pollutants")
+    plt.tight_layout()
+    plt.show()
+
+
+# 7. CREATE A BOX PLOT TO ANALYZE POLLUTANT DISTRIBUTIONS
+# Visualize median, quartiles, spread and potential outliers
+# for different pollutant measurements
+
+plt.figure(figsize=(12, 6))
+sns.boxplot(data=data[VALUE_COLS])
+plt.title("Distribution of Different Pollutant Levels")
+plt.xlabel("Pollutants")
+plt.ylabel("Pollutant Concentration")
+plt.tight_layout()
+plt.show()
+
+
+# 8. CREATE SCATTER PLOTS TO EXPLORE RELATIONSHIPS
+# Analyze the relationship between AQI and individual pollutants
+# If AQI is unavailable, compare two available pollutant variables
+
+if AQI_COL:
+    for col in VALUE_COLS:
+        plt.figure(figsize=(7, 5))
+        plt.scatter(data[col], data[AQI_COL], alpha=0.5)
+        plt.title("AQI vs " + col.upper())
+        plt.xlabel(col.upper())
+        plt.ylabel("AQI")
+        plt.tight_layout()
+        plt.show()
+else:
+    # Compare available pollutant variables
+    if len(VALUE_COLS) >= 2:
+        plt.figure(figsize=(8, 5))
+        plt.scatter(data[VALUE_COLS[0]], data[VALUE_COLS[1]], alpha=0.5)
+        plt.title(VALUE_COLS[0].upper() + " vs " + VALUE_COLS[1].upper())
+        plt.xlabel(VALUE_COLS[0].upper())
+        plt.ylabel(VALUE_COLS[1].upper())
+        plt.tight_layout()
+        plt.show()
+
+
+# 9. CUSTOMIZE VISUALIZATIONS
+# Use appropriate titles, axis labels, legends, colors and figure sizes
+# to make the visualizations clear and understandable
+
+# Titles, labels, legends, colors and figure sizes
+# are included in all the above plots.
+
+print("Air Quality Data Visualization Completed.")
